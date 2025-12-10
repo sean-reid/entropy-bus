@@ -89,16 +89,16 @@
         }
         #mobileControls {
             display: none;
-            padding: 15px;
+            padding: 10px;
             background: #444;
             text-align: center;
         }
         #tapArea {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
+            padding: 20px;
             border-radius: 15px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             cursor: pointer;
             user-select: none;
@@ -202,7 +202,7 @@
                 <span class="label">Time:</span>
                 <span id="time">0.0</span>s
             </div>
-            <div class="stat">
+            <div class="stat" id="uniqueKeysDisplay">
                 <span class="label">Unique Keys:</span>
                 <span id="uniqueKeys">0</span> / 50+
             </div>
@@ -525,9 +525,11 @@
             if (isMobile) {
                 document.getElementById('mobileInstructions').style.display = 'inline';
                 document.getElementById('desktopInstructions').style.display = 'none';
+                document.getElementById('uniqueKeysDisplay').style.display = 'none';
             } else {
                 document.getElementById('mobileInstructions').style.display = 'none';
                 document.getElementById('desktopInstructions').style.display = 'inline';
+                document.getElementById('uniqueKeysDisplay').style.display = 'block';
             }
         }
 
