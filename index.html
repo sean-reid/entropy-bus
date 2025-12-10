@@ -18,33 +18,37 @@
             align-items: center;
             min-height: 100vh;
             overflow: hidden;
+            padding: 10px;
         }
         #gameContainer {
-            width: 90vw;
+            width: 100%;
             max-width: 1200px;
             background: white;
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             overflow: hidden;
+            position: relative;
         }
         #gameCanvas {
             display: block;
             width: 100%;
+            height: auto;
             background: linear-gradient(to bottom, #87CEEB 0%, #87CEEB 50%, #696969 50%, #696969 60%, #228B22 60%);
         }
         #ui {
-            padding: 20px;
+            padding: 15px;
             background: #333;
             color: white;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 10px;
         }
         .stat {
-            font-size: 18px;
+            font-size: 14px;
             font-weight: bold;
+            white-space: nowrap;
         }
         .label {
             color: #FFD700;
@@ -52,7 +56,8 @@
         }
         #entropyBar {
             flex: 1;
-            min-width: 200px;
+            min-width: 150px;
+            width: 100%;
             height: 30px;
             background: #555;
             border-radius: 15px;
@@ -71,14 +76,38 @@
             left: 50%;
             transform: translate(-50%, -50%);
             font-weight: bold;
+            font-size: 12px;
             color: white;
             text-shadow: 1px 1px 2px black;
         }
         #instructions {
             text-align: center;
-            padding: 15px;
+            padding: 12px;
             background: #f0f0f0;
-            font-size: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        #mobileControls {
+            display: none;
+            padding: 15px;
+            background: #444;
+            text-align: center;
+        }
+        #tapArea {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        #tapArea:active {
+            transform: scale(0.95);
         }
         #gameOver {
             display: none;
@@ -88,20 +117,25 @@
             transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.9);
             color: white;
-            padding: 40px;
+            padding: 30px;
             border-radius: 15px;
             text-align: center;
             z-index: 10;
+            max-width: 90%;
         }
         #gameOver h1 {
-            font-size: 48px;
-            margin-bottom: 20px;
+            font-size: 36px;
+            margin-bottom: 15px;
             color: #FFD700;
         }
+        #gameOver p {
+            font-size: 18px;
+            margin: 8px 0;
+        }
         #gameOver button {
-            font-size: 20px;
-            padding: 15px 30px;
-            margin-top: 20px;
+            font-size: 18px;
+            padding: 12px 25px;
+            margin-top: 15px;
             background: #FFD700;
             border: none;
             border-radius: 5px;
@@ -111,14 +145,50 @@
         #gameOver button:hover {
             background: #FFA500;
         }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 0;
+            }
+            #gameContainer {
+                border-radius: 0;
+                max-width: 100%;
+            }
+            #instructions {
+                font-size: 12px;
+                padding: 10px;
+            }
+            .stat {
+                font-size: 12px;
+            }
+            #ui {
+                padding: 10px;
+                gap: 8px;
+            }
+            #entropyBar {
+                min-width: 120px;
+            }
+            #mobileControls {
+                display: block;
+            }
+            #gameOver h1 {
+                font-size: 28px;
+            }
+            #gameOver p {
+                font-size: 16px;
+            }
+        }
     </style>
 </head>
 <body>
     <div id="gameContainer">
         <div id="instructions">
-            🚌 <strong>ENTROPY BUS</strong> - Use ALL your keys! Letters, numbers, symbols, everything! More variety = More speed!
+            🚌 <strong>ENTROPY BUS</strong> - <span id="desktopInstructions">Use ALL your keys! Letters, numbers, symbols, everything! More variety = More speed!</span><span id="mobileInstructions" style="display:none;">Tap the button below with random timing! Vary your rhythm for more speed!</span>
         </div>
         <canvas id="gameCanvas" width="1200" height="400"></canvas>
+        <div id="mobileControls">
+            <div id="tapArea">TAP TO ACCELERATE! 🚌💨</div>
+        </div>
         <div id="ui">
             <div class="stat">
                 <span class="label">Distance:</span>
@@ -165,53 +235,71 @@
         // Constants
         const FRICTION = 0.96;
         const MAX_VELOCITY = 15;
-        const ENTROPY_DECAY = 0.98;
-        const TIME_WINDOW = 4000; // 4 seconds window
-        const MIN_KEYS_FOR_MAX_ENTROPY = 50; // Need variety across entire keyboard
-        let allKeysPressed = new Set(); // Track all unique keys ever pressed
+        const TIME_WINDOW = 4000;
+        const MIN_KEYS_FOR_MAX_ENTROPY = 50;
+        let allKeysPressed = new Set();
+        let isMobile = false;
+        let tapTimings = [];
 
         function calculateEntropy() {
             const now = Date.now();
-            // Filter recent key presses
+            
+            if (isMobile) {
+                tapTimings = tapTimings.filter(t => now - t < TIME_WINDOW);
+                
+                if (tapTimings.length < 5) return 0;
+                
+                const intervals = [];
+                for (let i = 1; i < tapTimings.length; i++) {
+                    intervals.push(tapTimings[i] - tapTimings[i-1]);
+                }
+                
+                const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                const variance = intervals.reduce((sum, interval) => {
+                    return sum + Math.pow(interval - avgInterval, 2);
+                }, 0) / intervals.length;
+                
+                const stdDev = Math.sqrt(variance);
+                const normalizedEntropy = Math.min(stdDev / 200, 1);
+                
+                const tapDuration = tapTimings[tapTimings.length - 1] - tapTimings[0];
+                const tapRate = (tapTimings.length / tapDuration) * 1000;
+                const rateMultiplier = Math.min(tapRate / 5, 1.2);
+                
+                return Math.min(normalizedEntropy * rateMultiplier, 1);
+            }
+            
             gameState.keyPresses = gameState.keyPresses.filter(kp => now - kp.time < TIME_WINDOW);
             
             if (gameState.keyPresses.length < 5) return 0;
             
-            // Count unique keys
             const keySet = new Set(gameState.keyPresses.map(kp => kp.key));
             const uniqueKeys = keySet.size;
             const totalPresses = gameState.keyPresses.length;
             
-            // Heavy penalty for low variety
             if (uniqueKeys < 5) return 0.05;
             if (uniqueKeys < 10) return 0.15;
             
-            // Calculate frequency distribution
             const freq = {};
             gameState.keyPresses.forEach(kp => {
                 freq[kp.key] = (freq[kp.key] || 0) + 1;
             });
             
-            // Shannon entropy calculation
             let entropy = 0;
             for (let key in freq) {
                 const p = freq[key] / totalPresses;
                 entropy -= p * Math.log2(p);
             }
             
-            // Normalize by maximum possible entropy
             const maxPossibleEntropy = Math.log2(uniqueKeys);
             let normalizedEntropy = maxPossibleEntropy > 0 ? entropy / maxPossibleEntropy : 0;
             
-            // Very steep diversity penalty - need nearly full keyboard
             const diversityRatio = uniqueKeys / MIN_KEYS_FOR_MAX_ENTROPY;
-            const diversityPenalty = Math.pow(diversityRatio, 2.5); // Much steeper
+            const diversityPenalty = Math.pow(diversityRatio, 2.5);
             
-            // Detect repeating patterns
             let patternPenalty = 1.0;
             const recentKeys = gameState.keyPresses.slice(-15).map(kp => kp.key);
             
-            // Check for sequential runs (asdf, qwer, etc)
             let sequentialCount = 0;
             for (let i = 1; i < recentKeys.length; i++) {
                 const diff = Math.abs(recentKeys[i].charCodeAt(0) - recentKeys[i-1].charCodeAt(0));
@@ -219,14 +307,12 @@
             }
             if (sequentialCount > 2) patternPenalty *= 0.5;
             
-            // Check for alternating patterns (ababab)
             let alternatingCount = 0;
             for (let i = 2; i < recentKeys.length; i++) {
                 if (recentKeys[i] === recentKeys[i-2]) alternatingCount++;
             }
             if (alternatingCount > 3) patternPenalty *= 0.6;
             
-            // Check for repeated bigrams (thth, erer)
             const bigrams = {};
             for (let i = 1; i < recentKeys.length; i++) {
                 const bigram = recentKeys[i-1] + recentKeys[i];
@@ -235,22 +321,43 @@
             const maxBigramCount = Math.max(...Object.values(bigrams));
             if (maxBigramCount > 2) patternPenalty *= 0.7;
             
-            // Penalize uneven distribution - check if any key is overused
             const maxFreq = Math.max(...Object.values(freq));
             const evenness = 1 - (maxFreq / totalPresses);
             const evennessBonus = Math.pow(evenness, 2);
             
-            // Press rate matters but much less
             const pressDuration = gameState.keyPresses.length > 1 ? 
                 (gameState.keyPresses[gameState.keyPresses.length - 1].time - gameState.keyPresses[0].time) : 1;
             const pressRate = (totalPresses / pressDuration) * 1000;
-            const rateMultiplier = Math.min(pressRate / 10, 1.1); // Very small bonus
+            const rateMultiplier = Math.min(pressRate / 10, 1.1);
             
             const finalEntropy = normalizedEntropy * diversityPenalty * patternPenalty * evennessBonus * rateMultiplier;
             return Math.min(finalEntropy, 1);
         }
 
         function handleKeyPress(e) {
+            if (gameState.gameFinished || isMobile) return;
+            
+            const now = Date.now();
+            if (!gameState.gameStarted) {
+                gameState.gameStarted = true;
+            }
+            
+            const key = e.key.length === 1 ? e.key : e.code;
+            allKeysPressed.add(key);
+            
+            gameState.keyPresses.push({
+                key: key,
+                time: now
+            });
+            
+            const entropy = calculateEntropy();
+            const velocityBoost = entropy * 0.8;
+            gameState.velocity = Math.min(gameState.velocity + velocityBoost, MAX_VELOCITY);
+            
+            gameState.lastKeyTime = now;
+        }
+
+        function handleTap() {
             if (gameState.gameFinished) return;
             
             const now = Date.now();
@@ -258,36 +365,25 @@
                 gameState.gameStarted = true;
             }
             
-            // Track all keys pressed (including special keys, numbers, symbols)
-            const key = e.key.length === 1 ? e.key : e.code; // Use code for special keys
-            allKeysPressed.add(key);
+            tapTimings.push(now);
+            allKeysPressed.add('tap_' + tapTimings.length);
             
-            // Record key press
-            gameState.keyPresses.push({
-                key: key,
-                time: now
-            });
-            
-            // Calculate entropy and boost velocity
             const entropy = calculateEntropy();
-            const velocityBoost = entropy * 0.8; // Up to 0.8 units per press
+            const velocityBoost = entropy * 0.8;
             gameState.velocity = Math.min(gameState.velocity + velocityBoost, MAX_VELOCITY);
             
             gameState.lastKeyTime = now;
         }
 
         function drawBus(x, y) {
-            // Bus body
             ctx.fillStyle = '#FFD700';
             ctx.fillRect(x, y, 80, 40);
             
-            // Windows
             ctx.fillStyle = '#87CEEB';
             ctx.fillRect(x + 10, y + 5, 15, 15);
             ctx.fillRect(x + 30, y + 5, 15, 15);
             ctx.fillRect(x + 50, y + 5, 15, 15);
             
-            // Wheels
             ctx.fillStyle = '#333';
             ctx.beginPath();
             ctx.arc(x + 20, y + 40, 8, 0, Math.PI * 2);
@@ -296,24 +392,20 @@
             ctx.arc(x + 60, y + 40, 8, 0, Math.PI * 2);
             ctx.fill();
             
-            // Details
             ctx.fillStyle = '#FF0000';
             ctx.fillRect(x + 70, y + 15, 8, 8);
         }
 
         function drawRoad() {
-            // Road
             ctx.fillStyle = '#696969';
             ctx.fillRect(0, 200, canvas.width, 100);
             
-            // Road lines
             ctx.fillStyle = '#FFD700';
             const lineOffset = (gameState.distance * 5) % 60;
             for (let i = -lineOffset; i < canvas.width; i += 60) {
                 ctx.fillRect(i, 245, 40, 5);
             }
             
-            // Grass
             ctx.fillStyle = '#228B22';
             ctx.fillRect(0, 300, canvas.width, 100);
         }
@@ -333,13 +425,9 @@
         }
 
         function drawFinishLine() {
-            // Calculate finish line position based on distance
-            // When distance = 0, finish is far right
-            // When distance = maxDistance, finish is at bus position
             const progress = gameState.distance / gameState.maxDistance;
-            const finishX = canvas.width + 200 - (progress * (canvas.width + 200 - 150)); // Moves from far right to bus X position
+            const finishX = canvas.width + 200 - (progress * (canvas.width + 200 - 150));
             
-            // Always draw if within reasonable view
             if (finishX > -50) {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(finishX, 200, 10, 100);
@@ -350,7 +438,6 @@
                     }
                 }
                 
-                // Draw "FINISH" text above the line
                 if (finishX < canvas.width && finishX > -50) {
                     ctx.fillStyle = '#000';
                     ctx.font = 'bold 24px Arial';
@@ -364,21 +451,15 @@
             if (!gameState.gameStarted || gameState.gameFinished) return;
             
             gameState.time += deltaTime;
-            
-            // Apply friction
             gameState.velocity *= FRICTION;
-            
-            // Update distance
             gameState.distance += gameState.velocity;
             
-            // Check for finish
             if (gameState.distance >= gameState.maxDistance) {
                 gameState.distance = gameState.maxDistance;
                 gameState.gameFinished = true;
                 showGameOver();
             }
             
-            // Update UI
             document.getElementById('distance').textContent = Math.floor(gameState.distance);
             document.getElementById('time').textContent = (gameState.time / 1000).toFixed(1);
             document.getElementById('uniqueKeys').textContent = allKeysPressed.size;
@@ -392,16 +473,12 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Sky
             ctx.fillStyle = '#87CEEB';
             ctx.fillRect(0, 0, canvas.width, 200);
             
             drawClouds();
             drawRoad();
-            
-            // Always draw finish line (it moves with distance)
             drawFinishLine();
-            
             drawBus(150, 220);
         }
 
@@ -425,10 +502,10 @@
                 gameFinished: false
             };
             allKeysPressed = new Set();
+            tapTimings = [];
             document.getElementById('gameOver').style.display = 'none';
         }
 
-        // Game loop
         let lastTime = Date.now();
         function gameLoop() {
             const now = Date.now();
@@ -441,10 +518,28 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // Event listeners
+        function detectMobile() {
+            isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                       window.innerWidth < 768;
+            
+            if (isMobile) {
+                document.getElementById('mobileInstructions').style.display = 'inline';
+                document.getElementById('desktopInstructions').style.display = 'none';
+            } else {
+                document.getElementById('mobileInstructions').style.display = 'none';
+                document.getElementById('desktopInstructions').style.display = 'inline';
+            }
+        }
+
         document.addEventListener('keydown', handleKeyPress);
+        document.getElementById('tapArea').addEventListener('click', handleTap);
+        document.getElementById('tapArea').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleTap();
+        });
         
-        // Start game loop
+        detectMobile();
+        window.addEventListener('resize', detectMobile);
         gameLoop();
     </script>
 </body>
